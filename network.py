@@ -284,28 +284,5 @@ def FJ_model_overT(G,T=100,extra_steps=50,stable_required=10,tol=1e-4):
         pol_values.append(pol)
         history.append({n: G.nodes[n]['z'] for n in G.nodes})
 
-        if prev_pol is not None:
-            delta_pol = abs(pol - prev_pol)
-
-            if delta_pol < 1e-4:
-                stable += 1
-
-                # first time we detect convergence
-                if not converged and stable >= 10:
-                    converged = True
-                    count = 100
-                    print(f"Polarization converged at step {t}. "
-                          f"Continuing 100 more steps...")
-            else:
-                # reset stability counter if deviation too large
-                stable = 0
-
-        prev_pol = pol
-
-        if converged:
-            count -= 1
-            if count <= 0:
-                break
-
     return history,pol_values,z_vals
 

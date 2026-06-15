@@ -13,12 +13,12 @@ import matplotlib.pyplot as plt
 from gnn_try2 import gnn_ucb_topk2
 from restart_linUCB import restart_topk_linucb
 from exp3s import exp3s_topk
-from network import create_nodes, create_edges, create_edges_for_hubs, pol_L1
+from network import create_nodes, create_edges, create_edges_for_hubs, pol_L1, FJ_model_overT
 from content_influence import gen_posts, generic_posts, gen_streams
 from utils import (plot_polarization_comparison, plot_shared_initial_and_algorithm_finals, 
                    plot_regret_comparison, plot_graph, plot_rewards_comparison, 
                    plot_round_rewards_comparison, plot_depolarization_percentage_buckets,save_and_close_current_fig,_save_figures_before_show,
-                   _figure_name)
+                   _figure_name, small)
 from greedy import greedy_multi_objective_user_selection
 from naive_greedy import greedy_naive
 from random_baseline import random_baseline
@@ -43,7 +43,7 @@ def generate_three_graphs(N=100):
     plot_graph(G2, title="Graph 2: Stable Case (p_mod=0.01)")
     
 
-    return graphs, [d_target1]
+    return graphs, [d_target1, d_target2]
 
 def summarize_result(result, method_name, graph_idx, seed, T):
     pol = np.asarray(result["pol_values"], dtype=float)
@@ -98,52 +98,89 @@ def run_algorithms_on_graph(G, graph_idx, seed=42, T=1000, k=5,k_f=3, k_g=2, M_g
 
     results = {}
 
+    # first we run FJ model over time
+    fj_run_start = time.perf_counter()
+    print(f"  Graph {graph_idx} - Running FJ model over T={T} rounds (seed={seed})...")
+    G_fj = copy.deepcopy(G)
+
+    raw_fj = FJ_model_overT(G_fj, T=T)
+    # Ensure FJ result is a dict with keys `history` and `pol_values` (some implementations return a tuple)
+    if isinstance(raw_fj, (tuple, list)):
+        try:
+            history_fj, pol_values_fj, z_vals_fj = raw_fj
+        except Exception:
+            # Fallback: wrap whole return value
+            results_fj = {"raw": raw_fj}
+        else:
+            results_fj = {"history": history_fj, "pol_values": pol_values_fj, "z_vals": z_vals_fj}
+    elif isinstance(raw_fj, dict):
+        results_fj = raw_fj
+    else:
+        results_fj = {"raw": raw_fj}
+
+    results_fj["runtime_seconds"] = time.perf_counter() - fj_run_start
+    results["FJ_model_overT"] = results_fj
+    print(f"FJ model runtime: {results_fj['runtime_seconds']:.2f}s")
+
+    # GREEDY
     greedy_start = time.perf_counter()
     print(f"  Graph {graph_idx} - Running Greedy (seed={seed})...")
     G_greedy = copy.deepcopy(G)
 
     result_greedy = greedy_multi_objective_user_selection(G_greedy,k=k,k_f=k_f,k_g=k_g,v_vec=v_vec,e_vec=e_vec,M_g=M_g,M_f=M_f,
-         T=T,k_users=5,K=5,gamma=0.4,cache_fraction=0.5,seed=seed,lambda_cost=lambda_cost,drift=True,cost_ratio=0.8,cost_budget=None)
+         T=T,k_users=10,K=10,gamma=0.7,cache_fraction=0.5,seed=seed,lambda_cost=lambda_cost,drift=True,cost_ratio=0.6,cost_budget=None)
 
     results["greedy_multi_objective"] = result_greedy
     result_greedy["runtime_seconds"] = time.perf_counter() - greedy_start
     print(f"Greedy runtime: {result_greedy['runtime_seconds']:.2f}s")
 
-    """
+    # RANDOM
+    random_start = time.perf_counter()
+    print(f"  Graph {graph_idx} - Running Random Baseline (seed={seed})...")
+    G_random = copy.deepcopy(G)
+
+    result_random = random_baseline(G_random,k=k,k_f=k_f,k_g=k_g,v_vec=v_vec,e_vec=e_vec,M_g=M_g,M_f=M_f,
+         T=T,k_users=10,K=10,gamma=0.7,cache_fraction=0.5,seed=seed,lambda_cost=lambda_cost,drift=True,cost_ratio=0.6,cost_budget=None)   
+    results["random_baseline"] = result_random
+    result_random["runtime_seconds"] = time.perf_counter() - random_start
+    print(f"Random Baseline runtime: {result_random['runtime_seconds']:.2f}s")
+
+    # EXP3.S
     print(f"Graph {graph_idx} - Running EXP3.S (seed={seed})...")
     G_exp3 = copy.deepcopy(G)
 
     exp3_start = time.perf_counter()
     result_exp3s = exp3s_topk(G_exp3,k=k,k_f=k_f,k_g=k_g,v_vec=v_vec,e_vec=e_vec,M_g=M_g,M_f=M_f,
-        T=T,k_users=10,K=10,gamma=0.7,eta=0.05,exp3_gamma=0.1,alpha_share=0.01,seed=seed,lambda_cost=lambda_cost,cost_ratio=1.0,drift=True,cost_budget=None)
+        T=T,k_users=10,K=10,gamma=0.7,eta=0.05,exp3_gamma=0.1,alpha_share=0.01,seed=seed,lambda_cost=lambda_cost,cost_ratio=0.6,drift=True,cost_budget=None)
     result_exp3s["runtime_seconds"] = time.perf_counter() - exp3_start
 
    
     results["exp3s_topk"] = result_exp3s
     print(f"EXP3.S runtime: {result_exp3s['runtime_seconds']:.2f}s")
-    """
 
+    # GNN UCB
     print(f"Graph {graph_idx} - Running GNN Ensemble UCB (seed={seed})...")
     G_gnn = copy.deepcopy(G)
 
     gnn_start = time.perf_counter()
     result_gnn = gnn_ucb_topk2(G_gnn,k=k,k_f=k_f,k_g=k_g,v_vec=v_vec,e_vec=e_vec,M_g=M_g,M_f=M_f,
-         T=T,k_users=5,K=5,d_target=d_target,gamma=0.4,seed=seed,
+         T=T,k_users=10,K=10,d_target=d_target,gamma=0.7,seed=seed,
          drift=True,cache_fraction=0.5,hidden_dim=32,embedding_dim=16, n_models = 1,
          alpha=1.0,lr=5e-4,buffer_size=500,batch_size=64,train_epochs=10,
-         warmup=500,epsilon=0.2,device="cpu", cost_ratio=0.8, train_every = 3 ,cost_budget=None)
+         warmup=500,epsilon=0.2,device="cpu", cost_ratio=0.6, train_every = 3 ,cost_budget=None)
     
     result_gnn["runtime_seconds"] = time.perf_counter() - gnn_start
      
     results['gnn_ucb_topk2'] = result_gnn
     print(f"GNN runtime: {result_gnn['runtime_seconds']:.2f}s")
 
+    # Restart LinUCB
     print(f"  Graph {graph_idx} - Running Restart LinUCB (seed={seed})...")
     G_restart = copy.deepcopy(G)
     linucb_start = time.perf_counter()
     result_restart = restart_topk_linucb(G_restart,k=k,k_f=k_f,k_g=k_g,v_vec=v_vec,e_vec=e_vec,
-        M_g=M_g,M_f=M_f,T=T,k_users=5,K=5,gamma=0.4,c=1.0,restart_period=500,lambda_reg=1.0,cache_fraction=0.5,
-        sigma_reward=0.03,theta_path=None,drift=True,delta=0.05,seed=seed,lambda_cost=lambda_cost,cost_ratio=0.8,cost_budget=None)
+        M_g=M_g,M_f=M_f,T=T,k_users=10,K=10,gamma=0.7,c=1.0,restart_period=500,lambda_reg=1.0,cache_fraction=0.5,
+        sigma_reward=0.03,theta_path=None,drift=True,delta=0.05,seed=seed,lambda_cost=lambda_cost,cost_ratio=0.6,cost_budget=None)
 
     results["restart_topk_linucb"] = result_restart
     result_restart["runtime_seconds"] = time.perf_counter() - linucb_start
@@ -179,7 +216,7 @@ def run_experiments_with_seeds(G, graph_idx, graph_name, seeds, T=5000, k=5, k_f
         'exp3s_topk': [],
         'restart_topk_linucb': [],
         'random_baseline': [],
-        'greedy_naive': []
+        'FJ_model_overT': []
      }
     
     print(f"\n{'='*60}")
@@ -192,6 +229,21 @@ def run_experiments_with_seeds(G, graph_idx, graph_name, seeds, T=5000, k=5, k_f
         results = run_algorithms_on_graph(
             G, graph_idx, seed=seed, T=T, k=k, k_f=k_f, k_g=k_g, M_g=M_g, M_f=M_f, lambda_cost=0.0, d_target=d_target
         )
+
+        # SAVE RESULTS IMMEDIATELY AFTER EACH SEED
+        save_dir = "saved_results"
+        os.makedirs(save_dir, exist_ok=True)
+
+        save_path = os.path.join(
+            save_dir,
+            f"{graph_name.replace(' ', '_').replace(':', '')}_seed{seed}_T{T}_N{len(G.nodes)}.pkl"
+        )
+
+        with open(save_path, "wb") as f:
+            pickle.dump(results, f)
+
+        print(f"Saved raw results to {save_path}")
+
         for algo in all_seed_results.keys():
             if algo in results:
                 all_seed_results[algo].append(results[algo])
@@ -235,31 +287,6 @@ def run_experiments_with_seeds(G, graph_idx, graph_name, seeds, T=5000, k=5, k_f
                     aggregated_results[algo]['cum_costs_std'] = np.std(cum_costs, axis=0)
     
     return aggregated_results
-    """
-    print(f"  Graph {graph_idx} - Running gnn_ensemble_ucb_topk...")
-    res_gnn = gnn_ensemble_ucb_topk(G,k=k,k_f=k_f,k_g=k_g,v_vec=v_vec,e_vec=e_vec,M_g=M_g,
-        M_f=M_f,T=T,k_users=5,K=1,gamma=0.5,seed=42,lambda_cost=0.1,drift=True,cache_fraction=0.5,
-        n_models=5,hidden_dim=32,embedding_dim=16,alpha_ucb=1.0,lr=1e-3,buffer_size=1000,batch_size=32,
-        train_epochs=5,train_every=1,epsilon=0.05,device="cpu",
-        opinion_key="z",prejudice_key="z",)
-    
-    results['gnn_ensemble_ucb_topk'] = res_gnn
-
-    print(f"  Graph {graph_idx} - Running linucb_s...")
-    G3_copy = copy.deepcopy(G)
-    result_linucb_s = linucb_s(
-        G3_copy, k=k, k_f=k_f, k_g=k_g, v_vec=v_vec, e_vec=e_vec,
-        M_g=M_g, M_f=M_f, T=T, k_users=1, K=1, gamma=0.3, c=1.0,
-        window_size=None, lambda_reg=1.0, drift=True, delta=0.7, seed=42
-    )
-    results['linucb_s'] = result_linucb_s
-
-
-    
-    """
-    
-    
-    return results
 
 def run_pareto_for_all_graphs(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=10, M_f=5, 
                                seeds=None, cost_ratio_values=None):
@@ -422,7 +449,7 @@ def run_pareto_for_all_graphs(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=10, M_f=5,
     print("PARETO ANALYSIS COMPLETE")
     print("="*80)
 
-def run_simple_comparison(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=2, M_f=5, seed=42, seeds=None):
+def run_simple_comparison(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=2, M_f=5, seed=42, seeds=None, show_fj_graph_idx=None):
     """
     Simple comparison: Generate 3 graphs, run 4 algorithms on each,
     create average polarization comparison plots and opinion distribution plots.
@@ -451,10 +478,9 @@ def run_simple_comparison(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=2, M_f=5, seed=4
     ]
     
     # Algorithm names for plotting (must match keys returned by `run_algorithms_on_graph`)
-    algo_names = ['greedy_multi_objective', 'gnn_ucb_topk2', 'exp3s_topk', 'restart_topk_linucb', 'random_baseline','greedy_naive']
+    algo_names = ['greedy_multi_objective', 'gnn_ucb_topk2', 'exp3s_topk', 'restart_topk_linucb', 'random_baseline']
     label_mapping = {
         'random_baseline': 'Random',
-        'greedy_naive': 'Greedy Naive',
         'greedy_multi_objective': 'Greedy Multi-Objective',
         'gnn_ucb_topk2': 'GNN-UCB',
         'exp3s_topk': 'EXP3.S',
@@ -462,6 +488,8 @@ def run_simple_comparison(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=2, M_f=5, seed=4
     }
     labels = [label_mapping[name] for name in algo_names]
     
+    # (No combined FJ series collection) show FJ per-graph immediately instead
+
     # Process each graph
     for graph_idx, (G, graph_name, d_target) in enumerate(zip(graphs, graph_names, d_targets)):
         print(f"\n{'='*80}")
@@ -553,6 +581,28 @@ def run_simple_comparison(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=2, M_f=5, seed=4
             label_mapping=label_mapping,
             title=f"Final Depolarization Percentage - {graph_name} ({len(seeds)} seeds)"
         )
+
+        # Show FJ model polarization-over-time immediately for this graph (single-graph view)
+        fj_entry = results.get('FJ_model_overT', None)
+        if fj_entry is not None:
+            # Select pol series safely without relying on truthiness of numpy arrays
+            fj_mean = None
+            if 'pol_values_mean' in fj_entry and fj_entry['pol_values_mean'] is not None:
+                fj_mean = fj_entry['pol_values_mean']
+            elif 'pol_values' in fj_entry and fj_entry['pol_values'] is not None:
+                fj_mean = fj_entry['pol_values']
+
+            # Only show for the requested graph index (if provided)
+            show_this = (show_fj_graph_idx is None) or (show_fj_graph_idx == graph_idx)
+            if fj_mean is not None and show_this:
+                print(f"  Showing FJ model polarization-over-time for {graph_name}...")
+                small(fj_mean, T, label=f"FJ - {graph_name}")
+                # Close the FJ plot immediately for the first graph
+                if graph_idx == 0:
+                    try:
+                        plt.close('all')
+                    except Exception:
+                        pass
     
     print("\n" + "="*80)
     print("SIMPLE COMPARISON COMPLETE")
@@ -565,7 +615,7 @@ if __name__ == "__main__":
     # main(N=50, T=1000, k=5, k_f=3, k_g=2, M_g=10, M_f=5)
     
     # Option 2: Run simple comparison (3 graphs x 4 algorithms with polarization and distributions)
-    run_simple_comparison(N=50, T=3000, k=6, k_f=3, k_g=3, M_g=6, M_f=5, seeds=[1,2,3])
+    run_simple_comparison(N=50, T=3500, k=6, k_f=3, k_g=3, M_g=6, M_f=5, seeds=[1,2,3])
 
     # Option 3: Run pareto analysis for GNN-UCB (gnn_ucb_topk2)
     #run_pareto_for_all_graphs(N=20, T=2000, k=6, k_f=3, k_g=3, M_g=6, M_f=5,seeds=[1,42], cost_ratio_values=[0.0,0.2,0.3,0.4, 0.45,0.5,0.65,0.8,1.0,2.0])

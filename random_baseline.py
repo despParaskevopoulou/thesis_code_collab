@@ -66,7 +66,7 @@ def random_baseline(G, k, k_f, k_g, v_vec, e_vec, M_g, M_f,T=2000, k_users=5, K=
             )
             if len(pool) == 0:
                 continue
-            slate = greedy_cost_constrained_slate(pool,z_before,k,k_f,k_g,gamma=gamma,alpha=0.4,epsilon=0.3,cost_ratio=cost_ratio,fallback_relax_cost=False,)
+            slate = greedy_cost_constrained_slate(pool,z_before,k,k_f,k_g,gamma=gamma,cost_ratio=cost_ratio)
             #slate = random_cost_constrained_slate(pool, z_before, k, k_f, k_g, alpha=0.4, cost_ratio=cost_ratio)
 
             if len(pool) > 0 and len(slate) == 0:

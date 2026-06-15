@@ -618,5 +618,5 @@ def small(pol3, T, label="Polarizing FJ"):
     ax.set_xlabel("Time step")
     ax.grid(True)
     ax.legend(loc="upper right")
-
-    plt.show()
+    # Save and close instead of showing interactively
+    save_and_close_fig(label if label is not None else "fj_pol")
