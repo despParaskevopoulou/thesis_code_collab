@@ -1,0 +1,15 @@
+data/
+*.bz2
+
+plots/
+figures/
+results/
+outputs/
+final_results/
+
+__pycache__/
+*.pyc
+
+venv/
+.venv/
+env/
