@@ -16,6 +16,11 @@ SHOW_FIGURES = False
 RUN_ID = time.strftime("%Y%m%d_%H%M%S")
 _FIG_COUNTER = 0
 
+PLOTS_DIR = os.path.join(os.path.dirname(__file__), "plots")
+SAVE_FIGURES = True
+_ORIGINAL_PLT_SHOW = plt.show
+_MAIN_FIG_COUNTER = 0
+RUN_ID = time.strftime("%Y%m%d_%H%M%S")
 
 def save_and_close_fig(name="figure"):
     """
@@ -43,6 +48,132 @@ def save_and_close_fig(name="figure"):
         plt.pause(0.5)
 
     plt.close()
+
+def plot_depolarization_percentage_buckets(aggregated_results,algo_names=None,label_mapping=None,title="Depolarization Percentage by Algorithm",show_values=True,):
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    if algo_names is None:
+        algo_names = list(aggregated_results.keys())
+
+    if label_mapping is None:
+        label_mapping = {}
+
+    labels = []
+    means = []
+    stds = []
+
+    for algo in algo_names:
+        if algo not in aggregated_results:
+            continue
+
+        seed_percentages = []
+
+        # Use per-seed results, not only the mean trajectory
+        for res in aggregated_results[algo]["results"]:
+            pol = np.asarray(res["pol_values"], dtype=float)
+
+            if len(pol) == 0:
+                continue
+
+            initial_pol = pol[0]
+            final_pol = pol[-1]
+
+            depol_pct = 100.0 * (initial_pol - final_pol) / max(initial_pol, 1e-12)
+            seed_percentages.append(depol_pct)
+
+        if len(seed_percentages) == 0:
+            continue
+
+        labels.append(label_mapping.get(algo, algo))
+        means.append(np.mean(seed_percentages))
+        stds.append(np.std(seed_percentages))
+
+    x = np.arange(len(labels))
+
+    plt.figure(figsize=(8, 5))
+
+    bars = plt.bar(
+        x,
+        means,
+        yerr=stds,
+        capsize=5,
+        edgecolor="black",
+        alpha=0.85,
+    )
+
+    plt.axhline(0, linewidth=1)
+    plt.xticks(x, labels, rotation=20, ha="right")
+    plt.ylabel("Depolarization (%)")
+    plt.title(title)
+    plt.grid(axis="y", alpha=0.3)
+
+    if show_values:
+        for bar, value in zip(bars, means):
+            height = bar.get_height()
+            offset = 1 if height >= 0 else -3
+
+            plt.text(
+                bar.get_x() + bar.get_width() / 2,
+                height + offset,
+                f"{value:.1f}%",
+                ha="center",
+                va="bottom" if height >= 0 else "top",
+                fontsize=9,
+            )
+
+    plt.tight_layout()
+    save_and_close_current_fig("percentages")
+
+
+def _figure_name(fig, counter):
+    title = ""
+    if getattr(fig, "_suptitle", None) is not None:
+        title = fig._suptitle.get_text()
+    if not title and fig.axes:
+        title = fig.axes[0].get_title()
+    if not title:
+        title = "figure"
+
+    title = re.sub(r"[^A-Za-z0-9_.-]+", "_", title).strip("_").lower()
+    if not title:
+        title = "figure"
+    return f"{RUN_ID}_main_{counter:03d}_{title[:80]}.png"
+
+def _save_figures_before_show(*args, **kwargs):
+    global _MAIN_FIG_COUNTER
+
+    if SAVE_FIGURES:
+        os.makedirs(PLOTS_DIR, exist_ok=True)
+        for fig_num in plt.get_fignums():
+            fig = plt.figure(fig_num)
+            if getattr(fig, "_saved_from_main", False):
+                continue
+            _MAIN_FIG_COUNTER += 1
+            fig.savefig(
+                os.path.join(PLOTS_DIR, _figure_name(fig, _MAIN_FIG_COUNTER)),
+                dpi=200,
+                bbox_inches="tight",
+            )
+            fig._saved_from_main = True
+
+    return _ORIGINAL_PLT_SHOW(*args, **kwargs)
+
+plt.show = _save_figures_before_show
+
+def save_and_close_current_fig(name):
+    """
+    Save current matplotlib figure and close it so experiments continue.
+    """
+    os.makedirs(PLOTS_DIR, exist_ok=True)
+
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", name).strip("_").lower()
+    path = os.path.join(PLOTS_DIR, f"{RUN_ID}_{safe_name}.png")
+
+    plt.savefig(path, dpi=200, bbox_inches="tight")
+    plt.close()
+
+    print(f"Saved plot: {path}")
 
 def plot_regret_comparison(results, labels, title_prefix):
     fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
