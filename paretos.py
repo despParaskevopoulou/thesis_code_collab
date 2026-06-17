@@ -103,7 +103,6 @@ def pareto_exp3s(G,d_target,cost_ratio_values,seeds,exp3s_topk,k,k_f,k_g,v_vec,e
 
     return all_points
 
-
 def greedy_pareto(G, d_target, cost_ratio_values, seeds, greedy_multi_objective_user_selection, gamma,K,
                   k, k_f, k_g, v_vec, e_vec, M_g, M_f, T=2000, k_users=5,):
     all_points = []

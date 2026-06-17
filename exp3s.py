@@ -5,7 +5,7 @@ from network import pol_L1, FJ_update, update_prejudices
 from content_influence import (attention, update_opinion,slate_cost, precompute_generic_cache_mask,
                                 simple_cost_user_pool, greedy_cost_slate, gen_posts, greedy_slate,
                                   user_pool, generic_posts, cost_user_pool, slate_cost, cost_friendly_slate, item_cost,
-                                  item_q, item_z, item_source, greedy_cost_constrained_slate,greedy_soft_cost_slate, hard_slate, cost_pool)
+                                  item_q, item_z, item_source, greedy_cost_constrained_slate,hard_slate, cost_pool)
 
 """
 In this file we implement the EXP3.S algorithm for user selection,
@@ -100,6 +100,26 @@ def exp3s_topk(G,k,k_f,k_g,v_vec,e_vec,M_g,M_f,T=5000,k_users=5,K=1, d_target = 
         probs = (1.0 - gamma_t) * (w / np.sum(w)) + gamma_t / N
         probs = probs / np.sum(probs)
 
+        feasible_idx = np.array([
+            i for i, u in enumerate(all_users)
+            if len(action_info[u]["slate"]) > 0
+        ], dtype=int)
+
+        if len(feasible_idx) == 0:
+            print(f"Round {t}: no feasible users.")
+            selected_idx = []
+        else:
+            p_feas = probs[feasible_idx]
+            p_feas = p_feas / p_feas.sum()
+
+            num_select = min(k_users, len(feasible_idx))
+
+            selected_idx = rng.choice(
+                feasible_idx,
+                size=num_select,
+                replace=False,
+                p=p_feas
+            )
         # Select k_users without replacement
         selected_idx = rng.choice(
             N,
@@ -129,12 +149,11 @@ def exp3s_topk(G,k,k_f,k_g,v_vec,e_vec,M_g,M_f,T=5000,k_users=5,K=1, d_target = 
             }
 
             if len(slate) == 0:
-                # neutral reward for EXP3 update
-                reward_i = 0.0
-                print(f"User {user} has empty slate at round {t}. Assigning zero reward.")
-                scaled_reward = 0.5
-                raw_reward = 0.0
+                reward_i = -1.0
+                raw_reward = -1.0
+                scaled_reward = 0.0
                 cost_i = 0.0
+                print(f"User {user} has empty slate at round {t}. Penalizing with zero EXP3 reward.")
             else:
                 z_before = float(G.nodes[user]["z"])
 
@@ -211,8 +230,8 @@ def exp3s_topk(G,k,k_f,k_g,v_vec,e_vec,M_g,M_f,T=5000,k_users=5,K=1, d_target = 
 
             # Importance-weighted reward estimate
             r_hat = scaled_reward / max(probs[i], 1e-12)
+            r_hat = np.clip(r_hat, 0.0, 5.0)
 
-            # EXP3 update
             w[i] *= np.exp(eta * r_hat / k_users)
         """
         if t % 100 == 0:
@@ -268,7 +287,7 @@ def exp3s_topk(G,k,k_f,k_g,v_vec,e_vec,M_g,M_f,T=5000,k_users=5,K=1, d_target = 
 
 
         if drift:
-            update_prejudices(G, tau=0.001)
+            update_prejudices(G, tau=0.0005)
 
         history.append({n: G.nodes[n]["z"] for n in G.nodes})
 

@@ -10,7 +10,7 @@ from network import create_nodes, create_edges, create_edges_for_hubs, pol_L1, F
 from content_influence import (attention, one_step_user_reward, update_opinion,slate_cost, precompute_generic_cache_mask,
                                 simple_cost_user_pool, greedy_cost_slate, gen_posts, greedy_slate,
                                   user_pool, generic_posts, cost_user_pool, slate_cost, cost_friendly_slate, item_cost,
-                                  item_q, item_z, item_source, greedy_cost_constrained_slate, hard_slate, cost_pool, greedy_soft_cost_slate)
+                                  item_q, item_z, item_source, greedy_cost_constrained_slate, hard_slate, cost_pool)
 
 def build_node_features(G, opinion_key="z", prejudice_key="prejudice"):
     """
@@ -75,7 +75,7 @@ def build_node_features(G, opinion_key="z", prejudice_key="prejudice"):
             out_deg, # 4
            # regime_pressure, # 5
            # mean_neigh_z, # 5
-            local_disagreement, # 6
+           # local_disagreement, # 6
             local_abs_polarization, # 7
             #z_i * mean_neigh_z, # 8
            # abs(z_i) - local_abs_polarization, # 9
@@ -587,7 +587,7 @@ def gnn_ucb_topk2(G,k,k_f,k_g,M_f,M_g,e_vec,v_vec,T=2000,k_users=5,drift=False,g
         # --------------------------------------------------
         
         if drift :
-            update_prejudices(G, tau=0.001)
+            update_prejudices(G, tau=0.0005)
 
         new_pol = pol_L1(G)
 

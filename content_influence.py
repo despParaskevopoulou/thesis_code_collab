@@ -469,7 +469,7 @@ def cost_pool(G,user,t,M_f,M_g,z_post_t,q_post_t,z_gen,q_gen,generic_cache_mask,
 
         is_famous = deg_j > d_target
 
-        cost = 0.25 if is_famous else 1.0
+        cost = 0.0 if is_famous else 1.0
 
         pool.append((z_j, q_j, "friend", cost))
 
@@ -484,75 +484,15 @@ def cost_pool(G,user,t,M_f,M_g,z_post_t,q_post_t,z_gen,q_gen,generic_cache_mask,
 
         is_cached = int(generic_cache_mask[t, m]) == 1
 
-        cost = 0.25 if is_cached else 1.0
+        cost = 0.0 if is_cached else 1.0
 
         pool.append((z_m, q_m, "generic", cost))
 
     return pool
 
-# soft cost constaint version
-def greedy_soft_cost_slate(pool,z,num_contents,k_f,k_g,gamma=0.5,alpha=0.7,epsilon=0.8,eta=0.4,):
-
-    if len(pool) == 0:
-        return []
-
-    slate_ref = maxsim_slate(z, pool, k_f, k_g)
-    sim_ref = greedy_helper(slate_ref, z)
-    sim_floor = alpha * sim_ref
-
-    remaining = pool.copy()
-    slate = []
-    sims = []
-    current_cost = 0.0
-
-    for step in range(num_contents):
-        best_idx = None
-        best_score = np.inf
-
-        for idx, item in enumerate(remaining):
-            z_item = item_z(item)
-            q_item = item_q(item)
-            c_item = item_cost(item)
-
-            possible_slate = slate + [item]
-
-            sim_val = float(similarity(z, z_item))
-            if not np.isfinite(sim_val):
-                continue
-
-            poss_sims = sims + [sim_val]
-            sim_slate_avg = float(np.mean(poss_sims))
-
-            if sim_slate_avg < sim_floor:
-                continue
-
-            z_cont = np.array([item_z(it) for it in possible_slate], dtype=float)
-            q_cont = np.array([item_q(it) for it in possible_slate], dtype=float)
-
-            _, z_bar = attention(z, z_cont, q_cont, beta=5, c=3)
-
-            s_next = (1.0 - gamma) * z + gamma * z_bar
-
-            possible_cost = current_cost + float(c_item)
-
-            score = abs(s_next) - epsilon * q_item + eta * possible_cost
-
-            if score < best_score:
-                best_score = score
-                best_idx = idx
-
-        if best_idx is None:
-            break
-
-        best_item = remaining.pop(best_idx)
-        slate.append(best_item)
-        sims.append(float(similarity(z, item_z(best_item))))
-        current_cost += float(item_cost(best_item))
-
-    return slate
-
 # the budget cosntraint version
-def greedy_cost_constrained_slate(pool,z,num_contents,k_f,k_g,gamma=0.5,alpha=0.7,epsilon=0.8,cost_budget=None,cost_ratio=None,eta = 0.4):
+def greedy_cost_constrained_slate(pool,z,num_contents,k_f,k_g,gamma=0.5,
+    alpha=0.5,epsilon=0.3,cost_budget=None,cost_ratio=None,fallback_relax_cost=False,eta = 0.4):
 
     if len(pool) == 0:
         return []
@@ -564,20 +504,13 @@ def greedy_cost_constrained_slate(pool,z,num_contents,k_f,k_g,gamma=0.5,alpha=0.
     sim_floor = alpha * sim_ref
 
     # Cost budget
-    #if cost_budget is None:
-    #    if cost_ratio is not None:
-    ref_cost = slate_cost(slate_ref)
-
     if cost_budget is None:
-        if cost_ratio is None:
-            cost_budget = np.inf
+        if cost_ratio is not None:
+            ref_cost = slate_cost(slate_ref)
+            cost_budget = cost_ratio * ref_cost
         else:
-            cost_budget = float(cost_ratio) * ref_cost
-    else:
-        cost_budget = float(cost_budget)
-    #    else:
-    #        # No cost constraint
-    #        cost_budget = np.inf
+#        # No cost constraint
+            cost_budget = np.inf
 
     remaining = pool.copy()
     slate = []
@@ -616,14 +549,14 @@ def greedy_cost_constrained_slate(pool,z,num_contents,k_f,k_g,gamma=0.5,alpha=0.
             z_cont = np.array([item_z(it) for it in possible_slate], dtype=float)
             q_cont = np.array([item_q(it) for it in possible_slate], dtype=float)
 
-            _, z_bar = attention(z, z_cont, q_cont, beta=5, c=3)
+            _, z_bar = attention(z, z_cont, q_cont, beta=0.8, c=0.5)
 
             s_next = (1.0 - gamma) * z + gamma * z_bar
 
             # Objective: depolarization + quality.
             # Cost is NOT in the score.
             score = abs(s_next) - epsilon * q_item
-            #score = - epsilon * q_item# + eta*c_item #eta * possible_cost
+            #score = - epsilon * q_item + eta * possible_cost
 
             if score < best_score:
                 best_score = score
@@ -868,4 +801,4 @@ def slate_cost(slate):
     if len(slate) == 0:
         return 0.0
 
-    return float(np.sum([item_cost(item) for item in slate]))
+    return float(np.mean([item_cost(item) for item in slate]))

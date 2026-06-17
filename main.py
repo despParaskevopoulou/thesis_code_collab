@@ -16,34 +16,34 @@ from exp3s import exp3s_topk
 from network import create_nodes, create_edges, create_edges_for_hubs, pol_L1, FJ_model_overT
 from content_influence import gen_posts, generic_posts, gen_streams
 from utils import (plot_polarization_comparison, plot_shared_initial_and_algorithm_finals, 
-                   plot_regret_comparison, plot_graph, plot_rewards_comparison, 
-                   plot_round_rewards_comparison, plot_depolarization_percentage_buckets,save_and_close_current_fig,_save_figures_before_show,
+                   plot_graph, plot_depolarization_percentage_buckets,save_and_close_current_fig,_save_figures_before_show,
                    _figure_name, small)
 from greedy import greedy_multi_objective_user_selection
 from naive_greedy import greedy_naive
 from random_baseline import random_baseline
 from paretos import rlinucb_pareto, pareto_exp3s, gnn_pareto, greedy_pareto, plot_combined_pareto
-
+from gnn_neuralucb import gnn_neuralucb_topk2
 
 def generate_three_graphs(N=100):
     """Generate 2 graphs with different configurations.
-    """
-    graphs = []
+
     
+
     print("Creating Graph 1 (Polarizing case, p_mod=0.01)...")
     G1 = create_nodes(N, case='pol', s_minus=-0.85, s_plus=0.85, p_mod=0.01)
-    G1, s0_1, A1, W1, d_target1 = create_edges_for_hubs(G1, N, kappa=4, dtarget=14, dmin=10)
+    G1, s0_1, A1, W1, d_target1 = create_edges_for_hubs(G1, N, kappa=8, dtarget=8, dmin=5)
     graphs.append(G1)
     plot_graph(G1, title="Graph 1: Polarizing Case (p_mod=0.01)")
+    """
+    graphs = []
 
     print("Creating Graph 2 (Stable case, p_mod=0.01)...")
     G2 = create_nodes(N, case='stable', s_minus=-0.65, s_plus=0.65, p_mod=0.01)
-    G2, s0_2, A2, W2, d_target2 = create_edges(G2, N, kappa=6, dtarget=14, dmin=10)
+    G2, s0_2, A2, W2, d_target2 = create_edges(G2, N, kappa=6, dtarget=6, dmin=3)
     graphs.append(G2)
     plot_graph(G2, title="Graph 2: Stable Case (p_mod=0.01)")
     
-
-    return graphs, [d_target1, d_target2]
+    return graphs, [d_target2]
 
 def summarize_result(result, method_name, graph_idx, seed, T):
     pol = np.asarray(result["pol_values"], dtype=float)
@@ -90,7 +90,7 @@ def summarize_result(result, method_name, graph_idx, seed, T):
         "depol_per_second": depol_per_second,
     }
 
-def run_algorithms_on_graph(G, graph_idx, seed=42, T=1000, k=5,k_f=3, k_g=2, M_g=10, M_f=5,lambda_cost=0.0, d_target=None):
+def run_algorithms_on_graph(G, graph_idx, seed=42, T=1000,k_users=10,K=10,gamma=0.7, k=5,k_f=3, k_g=2, M_g=10, M_f=5,lambda_cost=0.0, d_target=None):
     N = len(G.nodes)
 
     np.random.seed(seed + 10_000)
@@ -123,27 +123,17 @@ def run_algorithms_on_graph(G, graph_idx, seed=42, T=1000, k=5,k_f=3, k_g=2, M_g
     print(f"FJ model runtime: {results_fj['runtime_seconds']:.2f}s")
 
     # GREEDY
+
     greedy_start = time.perf_counter()
     print(f"  Graph {graph_idx} - Running Greedy (seed={seed})...")
     G_greedy = copy.deepcopy(G)
 
     result_greedy = greedy_multi_objective_user_selection(G_greedy,k=k,k_f=k_f,k_g=k_g,v_vec=v_vec,e_vec=e_vec,M_g=M_g,M_f=M_f,
-         T=T,k_users=10,K=10,gamma=0.7,cache_fraction=0.5,seed=seed,lambda_cost=lambda_cost,drift=True,cost_ratio=0.6,cost_budget=None)
+         T=T,k_users=k_users,K=K,gamma=gamma,cache_fraction=0.5,seed=seed,lambda_cost=lambda_cost,drift=True,cost_ratio=0.6,cost_budget=None)
 
     results["greedy_multi_objective"] = result_greedy
     result_greedy["runtime_seconds"] = time.perf_counter() - greedy_start
     print(f"Greedy runtime: {result_greedy['runtime_seconds']:.2f}s")
-
-    # RANDOM
-    random_start = time.perf_counter()
-    print(f"  Graph {graph_idx} - Running Random Baseline (seed={seed})...")
-    G_random = copy.deepcopy(G)
-
-    result_random = random_baseline(G_random,k=k,k_f=k_f,k_g=k_g,v_vec=v_vec,e_vec=e_vec,M_g=M_g,M_f=M_f,
-         T=T,k_users=10,K=10,gamma=0.7,cache_fraction=0.5,seed=seed,lambda_cost=lambda_cost,drift=True,cost_ratio=0.6,cost_budget=None)   
-    results["random_baseline"] = result_random
-    result_random["runtime_seconds"] = time.perf_counter() - random_start
-    print(f"Random Baseline runtime: {result_random['runtime_seconds']:.2f}s")
 
     # EXP3.S
     print(f"Graph {graph_idx} - Running EXP3.S (seed={seed})...")
@@ -151,7 +141,7 @@ def run_algorithms_on_graph(G, graph_idx, seed=42, T=1000, k=5,k_f=3, k_g=2, M_g
 
     exp3_start = time.perf_counter()
     result_exp3s = exp3s_topk(G_exp3,k=k,k_f=k_f,k_g=k_g,v_vec=v_vec,e_vec=e_vec,M_g=M_g,M_f=M_f,
-        T=T,k_users=10,K=10,gamma=0.7,eta=0.05,exp3_gamma=0.1,alpha_share=0.01,seed=seed,lambda_cost=lambda_cost,cost_ratio=0.6,drift=True,cost_budget=None)
+        T=T,k_users=k_users,K=K,gamma=gamma,eta=0.05,exp3_gamma=0.1,alpha_share=0.01,seed=seed,lambda_cost=lambda_cost,cost_ratio=0.6,drift=True,cost_budget=None)
     result_exp3s["runtime_seconds"] = time.perf_counter() - exp3_start
 
    
@@ -164,10 +154,10 @@ def run_algorithms_on_graph(G, graph_idx, seed=42, T=1000, k=5,k_f=3, k_g=2, M_g
 
     gnn_start = time.perf_counter()
     result_gnn = gnn_ucb_topk2(G_gnn,k=k,k_f=k_f,k_g=k_g,v_vec=v_vec,e_vec=e_vec,M_g=M_g,M_f=M_f,
-         T=T,k_users=10,K=10,d_target=d_target,gamma=0.7,seed=seed,
-         drift=True,cache_fraction=0.5,hidden_dim=32,embedding_dim=16, n_models = 1,
+         T=T,k_users=k_users,K=K,d_target=d_target,gamma=gamma,seed=seed,
+         drift=True,cache_fraction=0.5,hidden_dim=32,embedding_dim=16, n_models = 2,
          alpha=1.0,lr=5e-4,buffer_size=500,batch_size=64,train_epochs=10,
-         warmup=500,epsilon=0.2,device="cpu", cost_ratio=0.6, train_every = 3 ,cost_budget=None)
+         warmup=700,epsilon=0.2,device="cpu", cost_ratio=0.6, train_every = 3 ,cost_budget=None)
     
     result_gnn["runtime_seconds"] = time.perf_counter() - gnn_start
      
@@ -179,7 +169,7 @@ def run_algorithms_on_graph(G, graph_idx, seed=42, T=1000, k=5,k_f=3, k_g=2, M_g
     G_restart = copy.deepcopy(G)
     linucb_start = time.perf_counter()
     result_restart = restart_topk_linucb(G_restart,k=k,k_f=k_f,k_g=k_g,v_vec=v_vec,e_vec=e_vec,
-        M_g=M_g,M_f=M_f,T=T,k_users=10,K=10,gamma=0.7,c=1.0,restart_period=500,lambda_reg=1.0,cache_fraction=0.5,
+        M_g=M_g,M_f=M_f,T=T,k_users=k_users,K=K,gamma=gamma,c=1.0,restart_period=500,lambda_reg=1.0,cache_fraction=0.5,
         sigma_reward=0.03,theta_path=None,drift=True,delta=0.05,seed=seed,lambda_cost=lambda_cost,cost_ratio=0.6,cost_budget=None)
 
     results["restart_topk_linucb"] = result_restart
@@ -205,7 +195,7 @@ def _stack_seed_series(results_list, key):
         padded.append(values)
     return np.vstack(padded)
 
-def run_experiments_with_seeds(G, graph_idx, graph_name, seeds, T=5000, k=5, k_f=3, k_g=2, M_g=10, M_f=5, d_target=None):
+def run_experiments_with_seeds(G, k_users,K, gamma, graph_idx, graph_name, seeds, T=5000, k=5, k_f=3, k_g=2, M_g=10, M_f=5, d_target=None):
     """
     Run experiments for multiple seeds and aggregate results.
     Returns aggregated results with mean and std across seeds.
@@ -215,8 +205,8 @@ def run_experiments_with_seeds(G, graph_idx, graph_name, seeds, T=5000, k=5, k_f
         'gnn_ucb_topk2': [],
         'exp3s_topk': [],
         'restart_topk_linucb': [],
-        'random_baseline': [],
-        'FJ_model_overT': []
+        'FJ_model_overT': [],
+    #    'gnn_neuralucb_topk2': []
      }
     
     print(f"\n{'='*60}")
@@ -227,10 +217,16 @@ def run_experiments_with_seeds(G, graph_idx, graph_name, seeds, T=5000, k=5, k_f
     for seed in seeds:
         print(f"Seed {seed}:")
         results = run_algorithms_on_graph(
-            G, graph_idx, seed=seed, T=T, k=k, k_f=k_f, k_g=k_g, M_g=M_g, M_f=M_f, lambda_cost=0.0, d_target=d_target
+            G, graph_idx, seed=seed, T=T, k_users=k_users, K=K, gamma=gamma, k=k, k_f=k_f, k_g=k_g, M_g=M_g, M_f=M_f, lambda_cost=0.0, d_target=d_target
         )
+        # Propagate k_users (and K) into each algorithm result so saved files include run parameters
+        for algo_key, algo_res in results.items():
+            if isinstance(algo_res, dict):
+                algo_res.setdefault('k_users', k_users)
+                algo_res.setdefault('K', K)
+                algo_res.setdefault('gamma', gamma)
 
-        # SAVE RESULTS IMMEDIATELY AFTER EACH SEED
+        # SAVE RESULTS IMMEDIATELY AFTER EACH SEED (include metadata)
         save_dir = "saved_results"
         os.makedirs(save_dir, exist_ok=True)
 
@@ -239,10 +235,22 @@ def run_experiments_with_seeds(G, graph_idx, graph_name, seeds, T=5000, k=5, k_f
             f"{graph_name.replace(' ', '_').replace(':', '')}_seed{seed}_T{T}_N{len(G.nodes)}.pkl"
         )
 
-        with open(save_path, "wb") as f:
-            pickle.dump(results, f)
+        save_payload = {
+            'meta': {
+                'graph_name': graph_name,
+                'seed': seed,
+                'T': T,
+                'N': len(G.nodes),
+                'k_users': k_users,
+                'K': K,
+            },
+            'results': results,
+        }
 
-        print(f"Saved raw results to {save_path}")
+        with open(save_path, "wb") as f:
+            pickle.dump(save_payload, f)
+
+        print(f"Saved raw results (with metadata) to {save_path}")
 
         for algo in all_seed_results.keys():
             if algo in results:
@@ -288,7 +296,7 @@ def run_experiments_with_seeds(G, graph_idx, graph_name, seeds, T=5000, k=5, k_f
     
     return aggregated_results
 
-def run_pareto_for_all_graphs(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=10, M_f=5, 
+def run_pareto_for_all_graphs(N=100, T=1000, k_users=5, K=5, k=5, k_f=3, k_g=2, M_g=10, M_f=5, 
                                seeds=None, cost_ratio_values=None):
     """
     Run pareto analysis for all 3 graphs and create plots per algorithm with all 3 curves.
@@ -310,8 +318,8 @@ def run_pareto_for_all_graphs(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=10, M_f=5,
     # Generate 3 graphs with d_targets
     graphs, d_targets = generate_three_graphs(N)
     graph_names = [
-      #  "Graph 1: Stable",
-        "Graph 2: Polarizing", 
+        "Graph 1: Polarizing",
+        "Graph 2: Stable", 
       #  "Graph 3: Depolarizing"
     ]
     
@@ -338,39 +346,41 @@ def run_pareto_for_all_graphs(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=10, M_f=5,
             G, d_target=d_target, cost_ratio_values=cost_ratio_values, seeds=seeds,
             restart_topk_linucb=restart_topk_linucb, k=k, k_f=k_f, k_g=k_g,
             v_vec=v_vec, e_vec=e_vec, M_g=M_g, M_f=M_f, T=T,
-            k_users=5, K=5, gamma=0.4
+            k_users=k_users, K=K, gamma=0.4
         )
         all_linucb_results.append((graph_name, pareto_linucb_pts))
 
+        """
         # Run EXP3.S pareto
         print(f"Running EXP3.S pareto for {graph_name}...")
         pareto_exp3s_pts = pareto_exp3s(
             G, d_target=d_target, cost_ratio_values=cost_ratio_values, seeds=seeds,
             exp3s_topk=exp3s_topk, k=k, k_f=k_f, k_g=k_g,
             v_vec=v_vec, e_vec=e_vec, M_g=M_g, M_f=M_f, T=T,
-            k_users=5, K=5, gamma=0.4, exp3_gamma=0.1, alpha_share=0.01
+            k_users=k_users, K=K, gamma=0.4, exp3_gamma=0.1, alpha_share=0.01
         )
         all_exp3s_results.append((graph_name, pareto_exp3s_pts))
-
-        print(f"Running GNN ensemble UCB pareto for {graph_name}...")
-        pareto_gnn_pts = gnn_pareto(
-            G, d_target=d_target, cost_ratio_values=cost_ratio_values, seeds=seeds,
-            gnn_ensemble_ucb_topk=gnn_ucb_topk2, k=k, k_f=k_f, k_g=k_g,
-            v_vec=v_vec, e_vec=e_vec, M_g=M_g, M_f=M_f, T=T,
-            k_users=5, K=5, gamma=0.4
-        )
-        all_gnn_results.append((graph_name, pareto_gnn_pts))
-        
 
         # Run Greedy pareto
         print(f"Running Greedy pareto for {graph_name}...")
         pareto_greedy_pts = greedy_pareto(
             G, d_target=d_target, cost_ratio_values=cost_ratio_values, seeds=seeds,
             greedy_multi_objective_user_selection=greedy_multi_objective_user_selection,
-            gamma=0.4, K=5, k=k, k_f=k_f, k_g=k_g, v_vec=v_vec, e_vec=e_vec,
-            M_g=M_g, M_f=M_f, T=T, k_users=8,
+            gamma=0.4, K=K, k=k, k_f=k_f, k_g=k_g, v_vec=v_vec, e_vec=e_vec,
+            M_g=M_g, M_f=M_f, T=T, k_users=k_users,
         )
         all_greedy_results.append((graph_name, pareto_greedy_pts))
+        """
+
+        print(f"Running GNN ensemble UCB pareto for {graph_name}...")
+        pareto_gnn_pts = gnn_pareto(
+            G, d_target=d_target, cost_ratio_values=cost_ratio_values, seeds=seeds,
+            gnn_ensemble_ucb_topk=gnn_ucb_topk2, k=k, k_f=k_f, k_g=k_g,
+            v_vec=v_vec, e_vec=e_vec, M_g=M_g, M_f=M_f, T=T,
+            k_users=k_users, K=K, gamma=0.4
+        )
+        all_gnn_results.append((graph_name, pareto_gnn_pts))
+        
 
         # GNN pareto disabled for now; uncomment to run later
         # print(f"Running GNN-UCB pareto for {graph_name}...")
@@ -378,7 +388,8 @@ def run_pareto_for_all_graphs(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=10, M_f=5,
         # all_gnn_results.append((graph_name, pareto_gnn_pts))
 
         # Plot combined Pareto for this graph (include Greedy)
-        plot_combined_pareto(pareto_exp3s_pts, pareto_linucb_pts, pareto_gnn_points=pareto_gnn_pts, pareto_greedy_points=pareto_greedy_pts)
+        #plot_combined_pareto(pareto_exp3s_pts, pareto_linucb_pts, pareto_gnn_points=pareto_gnn_pts, pareto_greedy_points=pareto_greedy_pts)
+        plot_combined_pareto(pareto_linucb_pts, pareto_gnn_points=pareto_gnn_pts)
         
     # # Plot 2: Restart-LinUCB Pareto curves for all 3 graphs
     print("Plotting Restart-LinUCB Pareto curves...")
@@ -449,7 +460,7 @@ def run_pareto_for_all_graphs(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=10, M_f=5,
     print("PARETO ANALYSIS COMPLETE")
     print("="*80)
 
-def run_simple_comparison(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=2, M_f=5, seed=42, seeds=None, show_fj_graph_idx=None):
+def run_simple_comparison(N=100, T=1000, k_users=5, K=5, gamma=0.7, k=5, k_f=3, k_g=2, M_g=2, M_f=5, seed=42, seeds=None, show_fj_graph_idx=None):
     """
     Simple comparison: Generate 3 graphs, run 4 algorithms on each,
     create average polarization comparison plots and opinion distribution plots.
@@ -472,15 +483,14 @@ def run_simple_comparison(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=2, M_f=5, seed=4
     graphs, d_targets = generate_three_graphs(N)
     graph_names = [
         "Graph 1: Polarizing Case",
-        "Graph 2: Stable Case",
+       # "Graph 2: Stable Case",
 
         #"Graph 3: Depolarizing Case"
     ]
     
     # Algorithm names for plotting (must match keys returned by `run_algorithms_on_graph`)
-    algo_names = ['greedy_multi_objective', 'gnn_ucb_topk2', 'exp3s_topk', 'restart_topk_linucb', 'random_baseline']
+    algo_names = ['greedy_multi_objective', 'gnn_ucb_topk2', 'exp3s_topk', 'restart_topk_linucb']
     label_mapping = {
-        'random_baseline': 'Random',
         'greedy_multi_objective': 'Greedy Multi-Objective',
         'gnn_ucb_topk2': 'GNN-UCB',
         'exp3s_topk': 'EXP3.S',
@@ -498,7 +508,7 @@ def run_simple_comparison(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=2, M_f=5, seed=4
         
         # Run algorithms on this graph and average each time step over seeds.
         results = run_experiments_with_seeds(
-            G, graph_idx + 1, graph_name, seeds, T=T, k=k, k_f=k_f,
+            G, k_users,K, gamma, graph_idx + 1, graph_name, seeds, T=T, k=k, k_f=k_f,
             k_g=k_g, M_g=M_g, M_f=M_f, d_target=d_target
         )
 
@@ -608,6 +618,47 @@ def run_simple_comparison(N=100, T=1000, k=5, k_f=3, k_g=2, M_g=2, M_f=5, seed=4
     print("SIMPLE COMPARISON COMPLETE")
     print("="*80)
 
+def load_saved_results_for_graph(graph_name,seeds,T,N,save_dir="saved_results",):
+    algo_names = [
+        "greedy_multi_objective",
+        "gnn_ucb_topk2",
+        "exp3s_topk",
+        "restart_topk_linucb",
+        "random_baseline",
+        "FJ_model_overT",
+    ]
+
+    aggregated_results = {
+        algo: {"results": []}
+        for algo in algo_names
+    }
+
+    clean_graph_name = graph_name.replace(" ", "_").replace(":", "")
+
+    for seed in seeds:
+        file_path = os.path.join(
+            save_dir,
+            f"{clean_graph_name}_seed{seed}_T{T}_N{N}.pkl"
+        )
+
+        print("Loading:", file_path)
+
+        with open(file_path, "rb") as f:
+            results = pickle.load(f)
+
+        for algo in algo_names:
+            if algo in results:
+                aggregated_results[algo]["results"].append(results[algo])
+
+    # Remove algorithms with no loaded results
+    aggregated_results = {
+        algo: data
+        for algo, data in aggregated_results.items()
+        if len(data["results"]) > 0
+    }
+
+    return aggregated_results
+
 if __name__ == "__main__":
     # Choose one of the following:
     
@@ -615,9 +666,48 @@ if __name__ == "__main__":
     # main(N=50, T=1000, k=5, k_f=3, k_g=2, M_g=10, M_f=5)
     
     # Option 2: Run simple comparison (3 graphs x 4 algorithms with polarization and distributions)
-    run_simple_comparison(N=50, T=3500, k=6, k_f=3, k_g=3, M_g=6, M_f=5, seeds=[1,2,3])
+    run_simple_comparison(N=20, T=2000, k_users=5, K=5, gamma=0.4, k=6, k_f=3, k_g=3, M_g=6, M_f=5, seeds=[1])
 
     # Option 3: Run pareto analysis for GNN-UCB (gnn_ucb_topk2)
-    #run_pareto_for_all_graphs(N=20, T=2000, k=6, k_f=3, k_g=3, M_g=6, M_f=5,seeds=[1,42], cost_ratio_values=[0.0,0.2,0.3,0.4, 0.45,0.5,0.65,0.8,1.0,2.0])
+    #run_pareto_for_all_graphs(N=20, T=2000, k_users = 5, K=5, k=6, k_f=3, k_g=3, M_g=6, M_f=5,seeds=[1], cost_ratio_values=[0.0,0.2,0.3,0.8,1.0,2.0])
+
+    """
+    graph_name = "Graph 1: Polarizing Case"
+    seeds = [1, 2, 3]
+    T = 3500
+    N = 50
+
+    aggregated_results = load_saved_results_for_graph(
+        graph_name=graph_name,
+        seeds=seeds,
+        T=T,
+        N=N,
+        save_dir="saved_results",
+    )
+
+    algo_names = [
+        "greedy_multi_objective",
+        "gnn_ucb_topk2",
+        "exp3s_topk",
+        "restart_topk_linucb",
+        "random_baseline",
+    ]
+
+    label_mapping = {
+        "random_baseline": "Random",
+        "greedy_multi_objective": "Greedy",
+        "gnn_ucb_topk2": "GNN-UCB",
+        "exp3s_topk": "EXP3.S",
+        "restart_topk_linucb": "Restart-LinUCB",
+    }
+
+    plot_depolarization_percentage_buckets(
+        aggregated_results,
+        algo_names=algo_names,
+        label_mapping=label_mapping,
+        title=f"Final Depolarization Percentage - {graph_name} ({len(seeds)} seeds)"
+    )
+    """
+    
 
 

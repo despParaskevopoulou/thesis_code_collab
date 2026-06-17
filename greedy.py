@@ -5,7 +5,7 @@ from network import pol_L1, FJ_update, update_prejudices
 from content_influence import (attention, one_step_user_reward, update_opinion,slate_cost, precompute_generic_cache_mask,
                                 simple_cost_user_pool, greedy_cost_slate, gen_posts, greedy_slate,
                                   user_pool, generic_posts, cost_user_pool, slate_cost, cost_friendly_slate, item_cost,
-                                  item_q, item_z, item_source, greedy_cost_constrained_slate, greedy_soft_cost_slate, cost_pool)
+                                  item_q, item_z, item_source, greedy_cost_constrained_slate,cost_pool)
 
 """
 Here is the Greedy baseline.

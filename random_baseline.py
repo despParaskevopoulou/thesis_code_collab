@@ -70,21 +70,8 @@ def random_baseline(G, k, k_f, k_g, v_vec, e_vec, M_g, M_f,T=2000, k_users=5, K=
             #slate = random_cost_constrained_slate(pool, z_before, k, k_f, k_g, alpha=0.4, cost_ratio=cost_ratio)
 
             if len(pool) > 0 and len(slate) == 0:
-                    print("\nEMPTY SLATE DEBUG")
-                    print(f"t={t}, user={user}")
-                    print(f"z_user={z_before:.4f}")
-                    print(f"pool size={len(pool)}")
-                    print(f"k={k}, k_f={k_f}, k_g={k_g}")
-                    print(f"alpha={0.7}, epsilon={0.3}")
-                    print(f"cost_ratio={cost_ratio}")
-                    print("first pool items:")
-                    for it in pool[:10]:
-                        print(
-                            "z=", item_z(it),
-                            "q=", item_q(it),
-                            "cost=", item_cost(it),
-                            "source=", item_source(it)
-                        )
+                rewards_this_round.append(0.0)
+                continue
 
             z_cont = np.array([item_z(it) for it in slate], dtype=float)
             q_cont = np.array([item_q(it) for it in slate], dtype=float)
@@ -115,13 +102,14 @@ def random_baseline(G, k, k_f, k_g, v_vec, e_vec, M_g, M_f,T=2000, k_users=5, K=
                 f"Cumulative Reward: {cumulative_reward:.2f} | "
                 f"Cumulative Cost: {cumulative_cost:.2f}"
             )
+
         # 4) Polarization and FJ timing
         new_pol = pol_L1(G)
         pol_values.append(new_pol)
         # Apply FJ after actions for fairness across methods
         
         if drift :
-            update_prejudices(G, tau=0.001)
+            update_prejudices(G, tau=0.0005)
         history.append({n: float(G.nodes[n]['z']) for n in G.nodes})
 
     return {

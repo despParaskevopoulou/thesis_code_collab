@@ -225,7 +225,7 @@ def restart_topk_linucb(G, k, k_f, k_g, v_vec, e_vec, M_g, M_f,T=5000, k_users=5
                 slate = []
             else:
                 #slate = greedy_cost_slate(pool,z_user,k,lambda_cost,k_f,k_g,alpha=0.4,epsilon=0.3)
-                slate = greedy_cost_constrained_slate(pool,z_user,k,k_f,k_g,gamma=gamma,cost_ratio=cost_ratio)
+                slate = greedy_cost_constrained_slate(pool, z_user, k, k_f, k_g, cost_ratio=cost_ratio)
                 #slate = random_cost_constrained_slate(pool, z_user, k, k_f, k_g, alpha=0.4, cost_ratio=cost_ratio)
 
             phi, z_next_pred, dep_proxy, cost_feat = compute_phi(user, z_user, slate)
@@ -353,7 +353,7 @@ def restart_topk_linucb(G, k, k_f, k_g, v_vec, e_vec, M_g, M_f,T=5000, k_users=5
         pol_values.append(new_pol)
 
         if drift:
-            update_prejudices(G, tau=0.001)
+            update_prejudices(G, tau=0.0005)
 
         history.append({n: G.nodes[n]["z"] for n in G.nodes})
 
